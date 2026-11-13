@@ -1,0 +1,10 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Picture check</title>
+<style>body{margin:0;padding:10px;font:13px system-ui;background:#fff}.g{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+figure{margin:0}svg{width:100%;height:auto;display:block}figcaption{text-align:center;padding:2px}.h{display:flex;gap:8px}.h svg{width:90px}</style></head>
+<body><div class="h" id="h"></div><div class="g" id="g"></div>
+<script src="../content.js"></script><script src="../pics.js"></script>
+<script>
+document.getElementById('g').innerHTML = CONTENT.PHRASES.map(p => `<figure>${PIC(p.id)}<figcaption>${p.en}</figcaption></figure>`).join('');
+document.getElementById('h').innerHTML = ['happy','cheer','think','sleepy','dance'].map((m,i) => HARE(m, ['','cap','scarf','shades',''][i])).join('');
+</script></body></html>

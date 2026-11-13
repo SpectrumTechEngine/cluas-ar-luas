@@ -1,0 +1,10 @@
+{
+  "name": "cluas-ar-luas-functions",
+  "private": true,
+  "main": "index.js",
+  "engines": { "node": "22" },
+  "dependencies": {
+    "firebase-functions": "^6.3.0",
+    "firebase-admin": "^13.0.0"
+  }
+}
