@@ -249,6 +249,7 @@ function buildLesson(n) {
     const old = [...learned()].filter((id) => !ps.includes(id)).sort((a, b) => (S.seen[a] || 0) - (S.seen[b] || 0));
     ps.forEach((id, i) => {
       items.push({ t: 'meet', p: id }, { t: 'pick', p: id });
+      if (i % 2 === 0) items.push({ t: 'say', p: id }); // speak it straight after learning it
       if (i === 1) items.push({ t: 'sound', p: ps[0] });
       if (i === 2) items.push(multi(ps[1]) ? { t: 'build', p: ps[1] } : { t: 'sound', p: ps[1] });
     });
@@ -258,7 +259,6 @@ function buildLesson(n) {
     const bi = ps.filter(multi);
     if (bi.length) extra.push({ t: 'build', p: pickOne(bi.filter((x) => x !== ps[1]).concat(bi)) });
     extra.push({ t: 'sound', p: ps[ps.length - 1] });
-    extra.push({ t: 'say', p: ps[0] }, { t: 'say', p: ps[2] || ps[1] });
     old.slice(0, 2).forEach((id, i) => extra.push({ t: i ? 'sound' : 'pick', p: id }));
     items.push(...shuffle(extra));
     (n.lesson.chat || []).forEach((c) => items.push({ t: 'chat', c }));
@@ -303,7 +303,7 @@ function intro(kind) { if (L.heardIntro[kind] || (S.told[kind] || 0) >= 3) retur
 function meet(it) {
   const p = PH[it.p];
   $('stage').innerHTML = `${title('New phrase')}<div class="pbig">${PIC(p.id)}</div>${textOf(p)}${enOf(p)}${listen(p.id)}
-    <button class="soft" data-play="mean_${p.id}">❓ What does it mean?</button>`;
+    <button class="soft" data-play="mean_${p.id}">❓ What does it mean?</button>${micBlock('Your turn: say it', 'meet')}`;
   foot(`<button class="big" data-act="next">Continue</button>`);
   glow($('stage').querySelector('.listen button'), seq(...intro('p_meet'), p.id, 400, 'mean_' + p.id, 400, p.id));
 }
@@ -365,31 +365,37 @@ function chat(it) {
   $('stage').innerHTML = `${title('Finish the chat')}<div class="chat">
       <div class="line">${PERSON_ICON(c.a)}<button class="say-b" data-play="ch:${c.a}:${c.says}"><small>${CHARS[c.a].name}</small>🔊${S.showGa ? `<div class="ga" style="font-size:20px">${a.ga}</div>` : ''}</button></div>
       <div class="line me">${PERSON_ICON(c.b)}<div class="say-b" id="replyB"><small>${CHARS[c.b].name}</small>❓</div></div></div>
-    <div class="opts">${opts.map((o, k) => `<button class="card" data-opt="${o}">${PIC(o)}<span>${SHAPES[k]}</span></button>`).join('')}</div>`;
+    <div class="opts">${opts.map((o, k) => `<button class="card" data-opt="${o}">${PIC(o)}<span>${SHAPES[k]}</span></button>`).join('')}</div>
+    ${micBlock(`Or say ${CHARS[c.b].name}'s answer`, 'chat')}`;
   foot(`<button class="big" data-act="check" disabled>Check</button>`);
   glow($('stage').querySelector('.say-b'), seq(...intro('p_chat'), 'ch:' + c.a + ':' + c.says));
 }
 function say(it) {
   const p = PH[it.p];
   $('stage').innerHTML = `${title('Say it')}<div class="pbig" style="max-width:260px">${PIC(p.id)}</div>${textOf(p)}${listen(p.id)}
-    <button class="mic" id="mic" aria-label="Record">🎤</button><div id="heard" class="heard"></div><div class="row" id="after"></div>
+    ${micBlock('Tap 🎤 and say it', 'say')}
     <button class="link" data-act="mute">I can't speak right now</button>`;
   foot('');
   glow($('stage').querySelector('.listen button'), seq(...intro('p_say'), p.id));
 }
-async function micTap() {
+// The microphone, used in three places (mode):
+//   'say'  = a Say it question (3 stars = right answer)
+//   'meet' = "Your turn" on a new phrase card (practice only, nothing is marked)
+//   'chat' = saying the reply in Finish the chat (3 stars = right answer; otherwise just tap the picture)
+async function micTap(mode = 'say') {
   if (HEAR.recording()) return HEAR.stop(false);
-  if (L.busy) return;
-  const it = L.items[L.i], p = PH[it.p], mic = $('mic');
+  if (L.busy || (mode !== 'meet' && L.locked)) return;
+  const it = L.items[L.i], p = PH[mode === 'chat' ? it.c.reply : it.p], mic = $('mic');
+  const sayFoot = (html) => { if (mode === 'say') foot(html); };
   stopAudio(); pop();
   let res;
   try {
-    mic.classList.add('rec'); $('heard').textContent = 'Listening… tap again when you finish';
+    mic.classList.add('rec'); $('heard').textContent = 'Listening… tap 🎤 again when you finish';
     res = await HEAR.record({});
   } catch {
     mic.classList.remove('rec');
-    $('heard').textContent = "The microphone isn't allowed. Say it out loud, then tap Continue.";
-    foot(`<button class="big" data-act="sayok">Continue</button>`); return;
+    $('heard').textContent = "The microphone isn't allowed. Check the browser's microphone permission (the icon by the web address).";
+    sayFoot(`<button class="big" data-act="sayok">Continue</button>`); return;
   }
   if (!L || !$('mic')) return;
   mic.classList.remove('rec');
@@ -401,26 +407,40 @@ async function micTap() {
   L.busy = false;
   if (!L || !$('mic')) return;
   mic.classList.remove('busy');
+  const compare = `<button class="soft" data-act="me">▶ Me</button><button class="soft" data-play="${mode === 'chat' ? `ch:${it.c.b}:${p.id}` : p.id}">▶ Voice</button>`;
   if (!r.ok) { // can't reach the listener: compare by ear instead
     $('heard').innerHTML = "Couldn't reach the listener. Compare by ear:";
-    $('after').innerHTML = `<button class="soft" data-act="me">▶ Me</button><button class="soft" data-play="${p.id}">▶ Voice</button>`;
-    foot(`<div class="row"><button class="soft" data-act="retry">🔁 Again</button><button class="big" data-act="sayok" style="flex:1">👍 Sounded close</button></div>`);
+    $('after').innerHTML = compare;
+    sayFoot(`<div class="row"><button class="soft" data-act="retry">🔁 Again</button><button class="big" data-act="sayok" style="flex:1">👍 Sounded close</button></div>`);
     playMe().then(() => seq(p.id)); return;
   }
   const sc = HEAR.score(p.ga, r.texts);
   const ws = words(p);
   $('heard').innerHTML = `<div class="stars">${starsHTML(sc.stars)}</div>${sc.heard ? `I heard: <b>${sc.heard}</b>` : "I didn't catch that."}`;
-  $('after').innerHTML = `<button class="soft" data-act="me">▶ Me</button><button class="soft" data-play="${p.id}">▶ Voice</button>`;
-  if (sc.stars === 3) { award('voice'); save(); right(); seq(300, 'p_heard3'); return; }
+  $('after').innerHTML = compare;
+  if (sc.stars === 3) {
+    award('voice'); save();
+    if (mode === 'say') { right(); seq(300, 'p_heard3'); }
+    else if (mode === 'chat') { chatRight(); }
+    else { ding(); seq(300, 'p_heard3'); }
+    return;
+  }
   if (sc.stars === 2) {
     const miss = sc.missing.map((i) => ws[i]);
     $('after').innerHTML += `<div class="row">${miss.map((w) => `<button class="tile" data-play="${w.id}">${S.showSay ? `<span class="sayit">${sayHTML(w.say)}</span>` : ''}${S.showGa ? `<span class="ga">${w.ga}</span>` : ''}</button>`).join('')}</div>`;
-    foot(`<div class="row"><button class="soft" data-act="retry">🔁 Try again</button><button class="big" data-act="sayok" style="flex:1">Continue</button></div>`);
+    sayFoot(`<div class="row"><button class="soft" data-act="retry">🔁 Try again</button><button class="big" data-act="sayok" style="flex:1">Continue</button></div>`);
     seq(200, 'p_heard2', 200, ...miss.map((w) => w.id));
     return;
   }
-  foot(`<div class="row"><button class="soft" data-act="retry">🔁 Try again</button><button class="big" data-act="sayok" style="flex:1">${L.tries >= 2 ? 'Skip for now' : 'I said it right ✓'}</button></div>`);
+  sayFoot(`<div class="row"><button class="soft" data-act="retry">🔁 Try again</button><button class="big" data-act="sayok" style="flex:1">${L.tries >= 2 ? 'Skip for now' : 'I said it right ✓'}</button></div>`);
   seq(200, 'p_heard1', 300, p.id + ':slow');
+}
+const micBlock = (label, mode) => (speakOn() ? `<button class="mic${mode === 'say' ? '' : ' sm'}" id="mic" data-mode="${mode}" aria-label="Record">🎤</button>${label ? `<div class="note" style="margin-top:-6px">${label}</div>` : ''}<div id="heard" class="heard"></div><div class="row" id="after"></div>` : '');
+function chatRight() {
+  const it = L.items[L.i], want = it.c.reply;
+  const card = document.querySelector(`[data-opt="${want}"]`); if (card) card.classList.add('ok');
+  $('replyB').innerHTML = `<small>${CHARS[it.c.b].name}</small>${PIC(want).replace('class="pic-svg"', 'class="pic-svg" style="width:90px"')}`;
+  right(true); seq('ch:' + it.c.b + ':' + want, 300, pickOne(PRAISE)[0]);
 }
 function playMe() {
   stopAudio();
@@ -492,7 +512,7 @@ document.addEventListener('click', (e) => {
   const d = b.dataset;
   if (d.play) { const p = seq(d.play); if (b.closest('.listen') || b.classList.contains('say-b')) glow(b, p); return; }
   if (d.node !== undefined && !d.act) return nodeSheet(+d.node);
-  if (b.id === 'mic') return void micTap();
+  if (b.id === 'mic') return void micTap(d.mode);
   if (b.id === 'pauseBtn') return pauseSheet();
   if (d.voice) { S.voice = d.voice; save(); settingsSheet(); seq('hello'); return; }
   if (d.tog) { S[d.tog] = !S[d.tog]; save(); b.classList.toggle('on', S[d.tog]); return; }
@@ -541,8 +561,7 @@ document.addEventListener('click', (e) => {
       L.sel.classList.remove('sel');
       if (v === want) {
         L.sel.classList.add('ok');
-        if (it.t === 'chat') { $('replyB').innerHTML = `<small>${CHARS[it.c.b].name}</small>${PIC(want).replace('class="pic-svg"', 'class="pic-svg" style="width:90px"')}`; right(true); seq('ch:' + it.c.b + ':' + want, 300, pickOne(PRAISE)[0]); }
-        else right();
+        if (it.t === 'chat') chatRight(); else right();
       } else { L.sel.classList.add('bad'); nearly(want); }
       return;
     }

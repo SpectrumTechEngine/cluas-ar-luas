@@ -1,6 +1,6 @@
-// Cluas ar Luas: keeps a copy of the app and all its sound files so it works without internet,
+﻿// Cluas ar Luas: keeps a copy of the app and all its sound files so it works without internet,
 // and always fetches the newest version when online. Bump the cache name on every release.
-const C = 'cluas-ar-luas-v2';
+const C = 'cluas-ar-luas-v3';
 self.addEventListener('install', (e) => {
   self.skipWaiting();
   e.waitUntil(caches.open(C).then(async (c) => {
